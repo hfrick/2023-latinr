@@ -1,0 +1,42 @@
+/*-- scss:defaults --*/
+
+// colors
+$theme-white: #F7F8F9;
+$theme-lightyellow: #fbda6e;
+$theme-darkpurple: #351e66;
+$theme-mediumdarkpurple: #3f247a;
+$theme-mediumpurple: #472989;
+
+
+$body-bg: $theme-darkpurple;
+$body-color: $theme-white;
+$link-color: $theme-lightyellow;
+
+
+// fonts
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&display=swap');
+
+$font-family-sans-serif: "Atkinson Hyperlegible", sans-serif;
+
+// font sizes
+$presentation-h1-font-size: 2.2em !default;
+
+
+/*-- scss:rules --*/
+
+.lightyellow {
+  color: $theme-lightyellow;
+  //font-weight: bold;
+}
+
+.theme-divider-1 {
+  &:is(.slide-background) {
+    background-color: $theme-mediumpurple;
+  }
+}
+
+.theme-divider-2 {
+  &:is(.slide-background) {
+    background-color: $theme-mediumdarkpurple;
+  }
+}

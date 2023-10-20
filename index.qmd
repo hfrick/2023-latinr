@@ -1,0 +1,1458 @@
+---
+title: "Cognition: <br>Programming Edition!"
+subtitle: "LatinR 2023"
+author: "Hannah Frick"
+format:
+  revealjs: 
+    slide-number: true
+    footer: <https://www.frick.ws>
+    theme: [default, style.scss]
+    highlight-style: a11y
+    width: 1280
+    height: 720
+knitr:
+  opts_chunk: 
+    echo: true
+    collapse: true
+    comment: "#>"
+    fig.path: "figures/"
+---
+
+
+## {.title background-image="images/ken-suarez-4IxPVkFGJGI-unsplash.jpg"}
+
+::: footer
+Photo by <a href="https://unsplash.com/@kensuarez?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Ken Suarez</a> on <a href="https://unsplash.com/photos/4IxPVkFGJGI?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
+:::
+
+```{r prep}
+#| include: false
+
+library(tidymodels)
+```
+
+# Reading and understanding code {.theme-divider-1}
+
+# Research indicates that almost 60% of programmers’ time is spent understanding rather than writing code.
+
+Felienne Hermans - The Programmer's Brain
+
+::: {.notes}
+This talk draws heavily from this book. It's great, you might want to read it!
+:::
+
+---
+
+## Let's read some code
+
+```{r}
+my_fun <- function(a,  
+                   b,  
+                   c,  
+                   d = 2,  
+                   e = 3,  
+                   g = 22,  
+                   j = 324) {  
+  i <- a + c  
+  w <- (d + e) / ((a + c) + (d + e))  
+  four <- e - a  
+  f <- four - a  
+  ff <- i + w  
+  list(f, ff, four)  
+}
+```
+
+:::{.notes}
+- just pseudo code but still:
+- so many arguments!
+- no speaking names!
+- we just make some (very basic) calculations
+- why is this thing named four? 
+- we return 3 things but can you recall what they are?
+- we didn't even use all the arguments!
+:::
+
+# Our short-term memory (STM) only holds two to six items.
+
+
+
+## This is not even R code!
+
+```{C}
+#| code-line-numbers: 1|3-7|4|5-6|9-16|10,15|19-26|20,24||
+
+SEXP Cdqrls(SEXP x, SEXP y, SEXP tol, SEXP chk)
+{
+    SEXP ans;
+    SEXP qr, coefficients, residuals, effects, pivot, qraux;
+    int n, ny = 0, p, rank, nprotect = 4, pivoted = 0;
+    double rtol = asReal(tol), *work;
+    Rboolean check = asLogical(chk);
+
+    ans = getAttrib(x, R_DimSymbol);
+    if(check && length(ans) != 2) error(_("'x' is not a matrix"));
+    int *dims = INTEGER(ans);
+    n = dims[0]; p = dims[1];
+    if(n) ny = (int)(XLENGTH(y)/n); /* y :  n x ny, or an n - vector */
+    if(check && n * ny != XLENGTH(y))
+	error(_("dimensions of 'x' (%d,%d) and 'y' (%d) do not match"),
+	      n,p, XLENGTH(y));
+
+    /* These lose attributes, so do after we have extracted dims */
+    if (TYPEOF(x) != REALSXP) {
+	PROTECT(x = coerceVector(x, REALSXP));
+	nprotect++;
+    }
+    if (TYPEOF(y) != REALSXP) {
+	PROTECT(y = coerceVector(y, REALSXP));
+	nprotect++;
+    }
+/* < more code > */
+}
+```
+:::{.notes}
+- function definition?
+- coef -> a model? (it's code for a LM!)
+- `int`, `double`? are we initializing things?
+- what is `*work;`?
+- my English is better than my C
+- protect, why do we need to protect?
+:::
+
+## This is not even R code!
+
+```{C}
+#| code-line-numbers: 3-7|9
+
+SEXP Cdqrls(SEXP x, SEXP y, SEXP tol, SEXP chk)
+{
+    /* define some variables */
+
+    /* check inputs x and y */
+
+    /* need to protect x and y */
+
+/* < more code > */
+}
+```
+
+# Our long-term memory (LTM) helps us aggregate items in our STM into chunks.
+
+:::{.notes}
+our R knowledge allowed us to make some sense of C code
+:::
+
+## Modifying the right-hand side of a formula
+
+```{r}
+#| code-line-numbers: "|1,3,4,13"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), drop_strata, in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+## Tests show (important) use cases
+
+```{r}
+#| eval: false
+#| code-line-numbers: "|1,13|3,4,8,9,15,16"
+
+test_that("`drop_strata()` removes strata term in a series of `+` calls", {
+  expect_equal(
+    drop_strata(rlang::expr(a + strata(x))),
+    rlang::expr(a)
+  )
+  
+  expect_equal(
+    drop_strata(rlang::expr(a + strata(x) + b)),
+    rlang::expr(a + b)
+  )
+})
+
+test_that("`drop_strata()` does not remove strata in other cases", {
+  expect_equal(
+    drop_strata(rlang::expr(a * (b + strata(x)))),
+    rlang::expr(a * (b + strata(x)))
+  )
+})
+```
+
+## Abstract syntax tree
+
+```{r}
+library(lobstr)
+
+ast(strata(x))
+
+ast(a + b)
+```
+
+## Abstract syntax tree
+
+```{r}
+library(lobstr)
+
+ast(a + strata(x))
+
+ast(a + strata(x) + b)
+```
+
+:::{.notes}
+- we go up and down that tree structure
+- recursive: which level are we at? -> keep track of that
+:::
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+:::
+:::
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+#| code-line-numbers: "2|3"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+| 0 | | |
+:::
+:::
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+#| code-line-numbers: "3"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+| 0 | 3 | |
+:::
+:::
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+#| code-line-numbers: "2|12|17"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+| 0 | 3 | |
+| -1 | | in: `a` |
+:::
+:::
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+#| code-line-numbers: "18"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+| 0 | 3 | |
+| -1 | | in: `a` |
+| -1 |  | out: `a` |
+:::
+:::
+
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+#| code-line-numbers: "3|4"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+| 0 | 3 | `lhs` is `a` |
+:::
+:::
+
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+#| code-line-numbers: "4"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+| 0 | 3 | `lhs` is `a` |
+| 0 | 4 |  |
+:::
+:::
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+#| code-line-numbers: "4|5|7|9-11"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+| 0 | 3 | `lhs` is `a` |
+| 0 | 4 | `rhs` is `b` |
+:::
+:::
+
+## `drop_strata(a + b)`
+
+::: columns
+::: {.column width="65%"}
+
+```{r}
+#| code-line-numbers: "9-11"
+drop_strata <- function(expr, in_plus = TRUE) {
+  if (rlang::is_call(expr, "+", n = 2) && in_plus) {
+    lhs <- drop_strata(expr[[2]], in_plus = in_plus)
+    rhs <- drop_strata(expr[[3]], in_plus = in_plus)
+    if (rlang::is_call(lhs, "strata")) {
+      rhs
+    } else if (rlang::is_call(rhs, "strata")) {
+      lhs
+    } else {
+      rlang::call2("+", lhs, rhs)
+    }
+  } else if (rlang::is_call(expr)) {
+    expr[-1] <- purrr::map(as.list(expr[-1]), 
+                           drop_strata, 
+                           in_plus = FALSE)
+    expr
+  } else {
+    expr
+  }
+}
+```
+
+:::
+
+::: {.column width="35%"}
+| level | line | what |
+| --- | --- | --- |
+| 0 | 3 | `lhs` is `a` |
+| 0 | 4 | `rhs` is `b` |
+| 0 | 10 | return `a + b` |
+:::
+:::
+
+:::{.notes}
+not too bad, 
+without the table I'd have a hard time remembering how many levels down I am right now and where I return to when I go back up one level
+:::
+
+# Our working memory is our STM applied to a problem.
+# Our working memory only holds two to six items.
+
+
+## Challenges 
+
+::: columns
+::: {.column width="50%"}
+- Lack of information
+- Lack of knowledge
+- Lack of processing power
+:::
+::: {.column width="50%"}
+:::
+:::
+
+## Challenges, for reasons
+
+::: columns
+::: {.column width="50%"}
+- Lack of information
+- Lack of knowledge
+- Lack of processing power
+:::
+::: {.column width="50%"}
+- Limited capacity of STM
+- Activation of LTM
+- Limited capacity of working memory
+:::
+:::
+
+
+## Help your brain out
+
+. . .
+
+- Look for beacons: names, comments, paragraphs
+- Summarize code into chunks via comments or refactoring
+
+. . .
+
+- Learn more: programming concepts, domain knowledge
+
+. . .
+
+- Offload information to notes <!-- and docs -->
+
+
+# Writing Code {.theme-divider-1}
+
+:::{.notes}
+:::
+
+# Writing is for re-reading
+
+:::{.notes}
+- optimize for the real bottleneck: us humans
+:::
+
+# Better understanding - fewer mistakes - better science
+
+
+# Names {.theme-divider-2}
+
+# Good names help activate knowledge from your LTM.
+
+
+## {.center}
+
+::: columns
+
+::: {.column width="60%"}
+::: r-fit-text
+Coming soon:  
+Survival analysis in tidymodels 
+:::
+:::
+
+::: {.column width="40%"}
+![](images/tidymodels.png){fig-align="right" width="300"}
+:::
+:::
+
+::: {.notes}
+- We are extending support for survival analysis in tidymodels.
+- First part released: the models! Via parsnip and censored
+:::
+
+
+## {.center}
+
+::: r-fit-text
+```
+predict(survival_model, 
+        type = "survival",  
+        time = 2)
+```
+:::
+
+. . .
+
+`time`: the time points at which the survival probability is estimated
+
+
+---
+
+## Which time are we talking about?
+
+::: columns
+::: {.column width="70%"}
+```{r}
+#| label: plot-survival-times-observed
+#| echo: false
+#| fig-width: 8
+
+df <- tibble::tibble(
+  obs_id = 1:2,
+  obs_time = c(4, 2),
+  obs_status = c(4, 4), #c("censored" = pch_dot_empty, "event" = pch_dot_solid),
+  eval_time = 3
+)
+df %>% 
+  ggplot() +
+  geom_point(aes(obs_time, obs_id, shape = obs_status, size = I(5))) +
+  geom_segment(aes(x = rep(0, 2), y = obs_id, xend = obs_time, yend = obs_id)) +
+  #geom_vline(aes(xintercept = eval_time, col = I("red"), linetype = I("dashed"), linewidth = I(0.8))) +
+  scale_shape_identity("",
+                       labels = c("Observation"),
+                       breaks = 4,
+                       guide = "legend") +
+  scale_x_continuous(limits = c(0, 7)) +
+  scale_y_continuous(limits = c(0.5, 2.5)) +
+  labs(x = "Time", y = "Sample") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(), legend.position = "top")
+```
+:::
+
+::: {.column width="30%"}
+- Observed time
+:::
+:::
+
+## Which time are we talking about?
+
+::: columns
+::: {.column width="70%"}
+```{r}
+#| label: plot-survival-times-status
+#| echo: false
+#| fig.width: 8
+
+df <- tibble::tibble(
+  obs_id = 1:2,
+  obs_time = c(4, 2),
+  obs_status = c(1, 19), #c("censored" = pch_dot_empty, "event" = pch_dot_solid),
+  eval_time = 3
+)
+df %>% 
+  ggplot() +
+  geom_point(aes(obs_time, obs_id, shape = obs_status, size = I(5))) +
+  geom_segment(aes(x = rep(0, 2), y = obs_id, xend = obs_time, yend = obs_id)) +
+  #geom_vline(aes(xintercept = eval_time, col = I("red"), linetype = I("dashed"), linewidth = I(0.8))) +
+  scale_shape_identity("Status",
+                       labels = c("Observation: event", "Observation: censored"),
+                       breaks = c(19, 1),
+                       guide = "legend") +
+  scale_x_continuous(limits = c(0, 7)) +
+  scale_y_continuous(limits = c(0.5, 2.5)) +
+  labs(x = "Time", y = "Sample") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(), legend.position = "top")
+```
+:::
+
+::: {.column width="30%"}
+- Observed time
+- Event time
+- Censoring time
+
+:::
+:::
+
+## Which time are we talking about?
+
+::: columns
+::: {.column width="70%"}
+```{r}
+#| label: plot-survival-times-eval-before
+#| echo: false
+#| fig.width: 8
+
+df <- tibble::tibble(
+  obs_id = 1:2,
+  obs_time = c(4, 2),
+  obs_status = c(1, 19), #c("censored" = pch_dot_empty, "event" = pch_dot_solid),
+  eval_time = 1
+)
+df %>% 
+  ggplot() +
+  geom_point(aes(obs_time, obs_id, shape = obs_status, size = I(5))) +
+  geom_segment(aes(x = rep(0, 2), y = obs_id, xend = obs_time, yend = obs_id)) +
+  geom_vline(aes(xintercept = eval_time, col = I("black"), linetype = I("dashed"), linewidth = I(0.8))) +
+  scale_shape_identity("Status",
+                       labels = c("Observation: event", "Observation: censored"),
+                       breaks = c(19, 1),
+                       guide = "legend") +
+  scale_x_continuous(limits = c(0, 7)) +
+  scale_y_continuous(limits = c(0.5, 2.5)) +
+  labs(x = "Time", y = "Sample") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(), legend.position = "top")
+
+```
+:::
+
+::: {.column width="30%"}
+- Observed time
+- Event time
+- Censoring time
+- `time`
+:::
+:::
+
+## Which time are we talking about?
+
+::: columns
+::: {.column width="70%"}
+```{r}
+#| label: plot-survival-times-eval-middle
+#| echo: false
+#| fig.width: 8
+
+df <- tibble::tibble(
+  obs_id = 1:2,
+  obs_time = c(4, 2),
+  obs_status = c(1, 19), #c("censored" = pch_dot_empty, "event" = pch_dot_solid),
+  eval_time = 3
+)
+df %>% 
+  ggplot() +
+  geom_point(aes(obs_time, obs_id, shape = obs_status, size = I(5))) +
+  geom_segment(aes(x = rep(0, 2), y = obs_id, xend = obs_time, yend = obs_id)) +
+  geom_vline(aes(xintercept = eval_time, col = I("black"), linetype = I("dashed"), linewidth = I(0.8))) +
+  scale_shape_identity("Status",
+                       labels = c("Observation: event", "Observation: censored"),
+                       breaks = c(19, 1),
+                       guide = "legend") +
+  scale_x_continuous(limits = c(0, 7)) +
+  scale_y_continuous(limits = c(0.5, 2.5)) +
+  labs(x = "Time", y = "Sample") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(), legend.position = "top")
+
+```
+:::
+
+::: {.column width="30%"}
+- Observed time
+- Event time
+- Censoring time
+- `time`
+:::
+:::
+
+## Which time are we talking about?
+
+::: columns
+::: {.column width="70%"}
+```{r}
+#| label: plot-survival-times-eval-after
+#| echo: false
+#| fig.width: 8
+
+df <- tibble::tibble(
+  obs_id = 1:2,
+  obs_time = c(4, 2),
+  obs_status = c(1, 19), #c("censored" = pch_dot_empty, "event" = pch_dot_solid),
+  eval_time = 5
+)
+df %>% 
+  ggplot() +
+  geom_point(aes(obs_time, obs_id, shape = obs_status, size = I(5))) +
+  geom_segment(aes(x = rep(0, 2), y = obs_id, xend = obs_time, yend = obs_id)) +
+  geom_vline(aes(xintercept = eval_time, col = I("black"), linetype = I("dashed"), linewidth = I(0.8))) +
+  scale_shape_identity("Status",
+                       labels = c("Observation: event", "Observation: censored"),
+                       breaks = c(19, 1),
+                       guide = "legend") +
+  scale_x_continuous(limits = c(0, 7)) +
+  scale_y_continuous(limits = c(0.5, 2.5)) +
+  labs(x = "Time", y = "Sample") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(), legend.position = "top")
+
+```
+:::
+
+::: {.column width="30%"}
+- Observed time
+- Event time
+- Censoring time
+- `time`
+:::
+:::
+
+
+# Bad names can hinder you by activating the wrong knowledge.
+
+# `time` -> `eval_time`
+
+:::{.notes}
+- in tune, yardstick, and parsnip
+- deprecation in parsnip
+:::
+
+# `.time` -> `eval_time`
+# `stat_times` -> `eval_time`
+
+
+# Make (re)thinking names a separate step
+
+to avoid overloading your working memory.
+
+
+# Code Smells {.theme-divider-2}
+
+# Bad names are linguistic anti-patterns, code smells are structural anti-patterns.
+
+## Code smells
+
+::: columns
+::: {.column width="60%"}
+- Origin: Martin Fowler (1999) _Refactoring: Improving the Design of Existing Code_
+
+- R edition: Jenny Bryan (useR 2018 keynote) [_Code Smells and Feels_](https://github.com/jennybc/code-smells-and-feels)
+:::
+
+::: {.column width="40%"}
+<br> 
+
+![](images/EIKIFJB.png){fig-align="right" width="300"}
+:::
+:::
+
+:::{.notes}
+- revisit code smells
+- add: _why_ they are bad
+:::
+
+--- 
+
+## Code smells
+
+::: columns
+::: {.column width="60%"}
+[Long method]{.lightyellow}   
+[Long parameter list]{.lightyellow}  
+Switch statements  
+
+Alternative classes with different interfaces  
+Primitive obsession  
+Incomplete library class  
+Large class  
+Lazy class  
+Data class  
+Temporary field  
+Data clumps
+:::
+::: {.column width="40%"}
+Divergent change  
+Feature envy  
+Inappropriate intimacy  
+Duplicated code  
+Comments  
+Message chains  
+Middle man  
+Parallel inheritance  
+Refused bequest  
+Shotgun surgery  
+Speculative generality
+:::
+:::
+
+:::{.notes}
+- Long method -- hard to chunk
+- Long parameter list -- overload STM/working memory
+:::
+
+## Code smells
+
+::: columns
+::: {.column width="60%"}
+Long method  
+Long parameter list  
+Switch statements  
+
+Alternative classes with different interfaces  
+Primitive obsession  
+Incomplete library class  
+Large class  
+Lazy class  
+Data class  
+Temporary field  
+Data clumps
+:::
+::: {.column width="40%"}
+Divergent change  
+Feature envy  
+Inappropriate intimacy  
+[**Duplicated code**]{.lightyellow}  
+Comments  
+Message chains  
+Middle man  
+Parallel inheritance  
+Refused bequest  
+Shotgun surgery  
+Speculative generality
+:::
+:::
+
+## Duplicated code
+
+```{r}
+predict._elnet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+<br>
+
+```{r}
+predict._lognet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+## Duplicated code
+
+```{r}
+#| code-line-numbers: "1"
+predict._elnet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+<br>
+
+```{r}
+#| code-line-numbers: "1"
+predict._lognet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+## Duplicated code
+
+```{r}
+#| code-line-numbers: "1"
+predict_glmnet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+<br>
+
+```{r}
+predict._elnet <- predict_glmnet
+predict._lognet <- predict_glmnet
+```
+
+
+
+<!-- Similar code -->
+
+## Duplicated code
+
+```{r}
+#| code-line-numbers: "1"
+predict._elnet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+<br>
+
+```{r}
+#| code-line-numbers: "1"
+predict._lognet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+## Duplicated code
+
+```{r}
+#| code-line-numbers: "1"
+predict._elnet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+<br>
+
+```{r}
+#| code-line-numbers: "1,7"
+predict._lognet <- function(object, new_data, type = NULL, penalty = NULL, ...) {
+  # See discussion in https://github.com/tidymodels/parsnip/issues/195
+  if (is.null(penalty)) penalty <- object$spec$args$penalty
+  
+  object$spec$args$penalty <- .check_glmnet_penalty_predict(penalty, object)
+  
+  object$spec <- eval_args(object$spec)
+  predict.model_fit(object, new_data = new_data, type = type, ...)
+}
+```
+
+## Through the cognitive lens
+
+- Exact copy: Lost opportunity of chunking things together!
+
+- (Very) similar code: Potential to chunk the wrong things together!
+
+. . .
+
+Duplicated code ~ Chunking gone wrong
+
+
+
+# Design patterns {.theme-divider-2}
+
+# Design patterns are reusable solutions to common problems.
+
+:::{.notes}
+- Learn once, apply many times
+- Learn once, recognize many times
+:::
+
+--- 
+
+## Many arguments, revisited
+
+```{r}
+my_fun <- function(x, 
+                   y,
+                   opt1 = 1,
+                   opt2 = 2, 
+                   opt3 = 3, 
+                   opt4 = 4){
+  ...  
+}
+```
+
+:::{.notes}
+- tidymodels: `tune_grid()`
+- options: `verbose`, `save_pred`, `extract`, parallel processing
+:::
+
+
+## Many arguments, revisited
+
+```{r}
+my_fun <- function(x, y, options = my_fun_opts()) {
+  ...
+}
+
+my_fun_opts <- function(opt1 = 1, opt2 = 2, opt3 = 3, opt4 = 4) {
+  list(
+    opt1 = opt1,
+    opt2 = opt2,
+    opt3 = opt3, 
+    opt4 = opt4
+  ) 
+}
+```
+
+. . .
+
+Principle/Pattern: Reduce argument clutter with an options object
+
+
+:::{.notes}
+- tidymodels: `control_grid()`, 
+- also: `control_bayes()`, `control_parsnip()`
+:::
+
+
+
+# Design patterns can help lower the cognitive load.
+
+# Work in progress: <br> <https://design.tidyverse.org/>
+
+:::{.notes}
+- Work in progress: Collection of patterns, online book, Substack
+- Loads on API design
+:::
+
+
+# Tests {.theme-divider-2}
+
+# If you can't make changes because you're afraid of breaking something, it's already broken.
+
+Kara Woo
+
+:::{.notes}
+- that glmnet/parsnip code...
+- tests give you the freedom to refactor
+- but they are not like regular code
+:::
+
+# Tests are a diagnostic tool, make them _obvious_.
+
+[Michael Lynch - Why good developers write bad unit tests](https://mtlynch.io/good-developers-bad-tests/)
+
+:::{.notes}
+- write tests for when they fail -> you want them easy to read and easy to execute
+:::
+
+
+## {.center}
+
+```
+── Failure (test-my_fun.R:4:3): my_fun() works ─────────────────────────────────
+`one_thing` (`actual`) not equal to `another_thing` (`expected`).
+
+`actual`:   FALSE
+`expected`: TRUE 
+[ FAIL 1 | WARN 0 | SKIP 0 | PASS 3 ]
+
+Test complete
+```
+
+## What `"my_fun() works"` looks like
+
+```{r}
+#| eval: false
+
+test_that("my_fun() works", {
+   # setup for thing 1
+  expect_equal(my_fun(x_1), ...)
+  
+  # setup for thing 2
+  expect_equal(my_fun(x_2), ...)
+  
+  # setup for thing 3
+  expect_equal(my_fun(x_3), ...)  
+  
+  ...
+})
+```
+
+## Be specific in test names
+
+```{r}
+#| eval: false
+
+test_that("my_fun() can do thing 1", {
+   # setup for thing 1
+  expect_equal(my_fun, ...)
+})
+
+test_that("my_fun() can do thing 2", {
+  # setup for thing 2
+  expect_equal(my_fun(x_2), ...)
+})
+
+test_that("my_fun() can do thing 3", {
+  # setup for thing 3
+  expect_equal(my_fun(x_3), ...)  
+})
+
+...
+```
+
+## What if the second test breaks?
+
+```{r}
+#| eval: false
+#| code-line-numbers: "|16-17|1,3,5,11,13"
+
+library(dplyr)
+
+dat <- data.frame(a = 1:3, b = c("a", "b", "c"))
+
+skip_if_not_installed("a_package")
+
+test_that("my_fun() does this", {
+  expect_equal(my_fun(dat), ...)
+})
+
+dat2 <- data.frame(x = 1:5, y = 6:10)
+
+skip_on_os("windows")
+
+test_that("my_fun_2() does that", {
+  dat2 <- mutate(dat2, z = x + y)
+  expect_equal(my_fun_2(dat, dat2), ...)
+})
+```
+
+::: {style="font-size: 0.75em;"}
+Example adapted from Hadley Wickham's [Package Development Masterclass at posit::conf(2023)](https://github.com/posit-conf-2023/pkg-dev-masterclass)
+:::
+
+## Make tests self-contained
+
+```{r}
+#| eval: false
+#| code-line-numbers: "6,13-15|1"
+
+library(dplyr)
+
+skip_if_not_installed("a_package")
+
+test_that("my_fun() does this", {
+  dat <- data.frame(a = 1:3, b = c("a", "b", "c"))
+  expect_equal(my_fun(dat), ...)
+})
+
+skip_on_os("windows")
+
+test_that("my_fun_2() does that", {
+  dat <- data.frame(a = 1:3, b = c("a", "b", "c"))
+  dat2 <- data.frame(x = 1:5, y = 6:10)
+  dat2 <- mutate(dat2, z = x + y)
+  expect_equal(my_fun_2(dat, dat2), ...)
+})
+```
+
+## Make tests self-contained
+
+```{r}
+#| eval: false
+#| code-line-numbers: "13|1,8"
+
+skip_if_not_installed("a_package")
+
+test_that("my_fun() does this", {
+  dat <- data.frame(a = 1:3, b = c("a", "b", "c"))
+  expect_equal(my_fun(dat), ...)
+})
+
+skip_on_os("windows")
+
+test_that("my_fun_2() does that", {
+  dat <- data.frame(a = 1:3, b = c("a", "b", "c"))
+  dat2 <- data.frame(x = 1:5, y = 6:10)
+  dat2 <- dplyr::mutate(dat2, z = x + y)
+  expect_equal(my_fun_2(dat, dat2), ...)
+})
+```
+
+## Make tests self-contained
+
+```{r}
+#| eval: false
+#| code-line-numbers: "2,9-10|8-16"
+
+test_that("my_fun() does this", {
+  skip_if_not_installed("a_package")
+  
+  dat <- data.frame(a = 1:3, b = c("a", "b", "c"))
+  expect_equal(my_fun(dat), ...)
+})
+
+test_that("my_fun_2() does that", {
+  skip_if_not_installed("a_package")
+  skip_on_os("windows")
+
+  dat <- data.frame(a = 1:3, b = c("a", "b", "c"))
+  dat2 <- data.frame(x = 1:5, y = 6:10)
+  dat2 <- dplyr::mutate(dat2, z = x + y)
+  expect_equal(my_fun_2(dat, dat2), ...)
+})
+```
+
+
+:::{.notes}
+- we have gleefully violated that principle of avoiding code duplication!
+- that's because our goal is a different one here
+- we want things to be obvious
+- we want to have everything we need in that test_that call
+:::
+
+
+# Obvious = <br>Fits into working memory
+
+:::{.notes}
+obvious translates to fit in working memory
+:::
+
+# Well-chunked code supports testing.
+
+:::{.notes}
+- Made easier by having small-ish functions
+- Double win: easier to read, easier to test
+:::
+
+# In tests, we get to strip away complexity instead of accommodating it.
+
+:::{.notes}
+- test each chunk, each function separately from each other
+- test interaction of the pieces separately from the individual pieces
+:::
+
+
+
+
+<!--outro -->
+
+##  {.title background-image="images/ken-suarez-4IxPVkFGJGI-unsplash.jpg"}
+
+::: footer
+Photo by <a href="https://unsplash.com/@kensuarez?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Ken Suarez</a> on <a href="https://unsplash.com/photos/4IxPVkFGJGI?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
+:::
+
+:::{.notes}
+- want to leave you with two things
+:::
+
+# Having a mental model of how your brain works helps you to work _with_ it, not against it.
+
+:::{.notes}
+- knowing how the limits manifest, knowing how to support yourself
+- your mind can only hold so much at a time
+- support it so you can focus that capacity on what matters to you
+:::
+
+# If you want your code to grow in complexity, <br>you need to keep (re-)chunking. 
+
+:::{.notes}
+- why refactoring and upkeep matter
+:::
+
+# If you want your understanding to grow, <br>you need to keep (re-)chunking.
+
+
+# Thank you!
+
+The village: Maëlle, Tracy, Emil, Max, Simon, tidy team, Mine, Julie
+
+:::{.notes}
+- you for your attention
+- they say it takes a village, here is mine
+:::
